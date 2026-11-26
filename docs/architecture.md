@@ -1,32 +1,55 @@
-# Arquitetura do backend
+# Arquitetura do sistema integrado
 
-O Smart Buffet Analytics recebe leituras de peso, calcula a disponibilidade por cuba e registra o consumo estimado. O estado atual, o relatório semanal em JSON e o download CSV são expostos pela API FastAPI para consumo por clientes HTTP. A demonstração pode enviar dados pelo Swagger. Simulador, dashboard e fonte IoT são clientes previstos para a integração.
+O Smart Buffet Analytics integra o simulador Python, o backend FastAPI, o banco SQLite e o dashboard HTML/CSS/JavaScript. O simulador envia leituras reais por HTTP; o backend calcula disponibilidade, consumo e alertas e armazena o histórico. O dashboard consulta o estado atual e o relatório semanal e baixa o CSV produzido pela API. O Swagger também permite enviar leituras manualmente. A integração física com ESP32 e sensores permanece futura.
 
 ## Componentes
 
 ```mermaid
 flowchart LR
-    Fonte["Simulador ou Swagger"] -->|"POST /leituras"| API["FastAPI e routers"]
-    IoT["Fonte IoT futura"] -.-> API
-    Painel["Dashboard, cliente previsto"] -->|"Consultas GET"| API
+    Sim["Simulador Python existente"] -->|"POST /leituras via HTTPX"| API["Backend FastAPI existente"]
+    Swagger["Swagger: envio manual"] -->|"POST /leituras"| API
+    IoT["ESP32 e sensores: integração física futura"] -.->|"POST /leituras previsto"| API
+    Painel["Dashboard HTML/CSS/JS existente"] -->|"GET estado atual, relatório e CSV"| API
     API <--> Schemas["Schemas Pydantic"]
     API --> Leituras["Serviço de leituras"]
     API --> Relatorio["Serviço de relatórios"]
     Leituras --> SQL["Conexões e queries SQLite"]
     Relatorio --> SQL
-    SQL --> Dados[("Tabela leituras")]
+    SQL --> Dados[("SQLite existente: tabela leituras")]
     Relatorio --> CSV["CSV em memória"]
     CSV --> API
 ```
 
 | Componente | Responsabilidade |
 | --- | --- |
+| `simuladores/simulador_balancas.py` | Simula cinco balanças, consumo e reposição; envia leituras à API e gera histórico de sete dias. |
+| `frontend/dashboard.html` | Exibe pesos, status, alertas e relatório; consulta a API real por padrão e oferece download do CSV. |
 | `app/main.py` | Configura CORS, registra os routers e inicializa o banco no ciclo de vida da API. |
 | `app/routers/` | Expõe os endpoints síncronos, encaminha chamadas aos serviços e define as respostas HTTP. |
 | `app/schemas/` | Valida as leituras recebidas e define os contratos de saída. |
 | `app/services/` | Calcula disponibilidade, consumo, alertas e agregações do relatório. |
 | `app/database/` | Inicializa o SQLite, abre conexões e mantém o SQL parametrizado. |
 | `app/utils/` | Define constantes e uma chave de comparação de nomes usando NFC e `casefold()`. |
+| `tests/` | Verifica contratos, regras, API, persistência, concorrência, relatórios e simulador com bancos temporários. |
+| `docs/` | Mantém os contratos de integração, o roteiro de demonstração e os resultados da integração. |
+
+## Execução e comunicação entre componentes
+
+Na raiz do projeto, com as dependências instaladas, execute cada servidor em seu próprio terminal:
+
+```shell
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+```shell
+python -m http.server 5500 --bind 127.0.0.1 --directory frontend
+```
+
+A API fica em `http://127.0.0.1:8000`, com Swagger em `/docs` e ReDoc em `/redoc`. O dashboard fica em `http://127.0.0.1:5500/dashboard.html`; seu `API_URL` aponta para a porta 8000. O servidor estático entrega a interface e o navegador consulta diretamente o backend, com CORS autorizado para essa origem.
+
+Para a demonstração semanal, use primeiro `python -m simuladores.simulador_balancas --historico-semanal` em uma instância com banco vazio. Mantenha os demais escritores parados até concluir a carga. Depois, inicie `python -m simuladores.simulador_balancas` para gerar leituras em tempo real. O [README](../README.md#executar-os-três-componentes-integrados) contém instalação, opções do simulador e comando para uma instância com banco temporário, preservando os dados existentes.
+
+O navegador consulta `GET /estado-atual` a cada três segundos e `GET /relatorio-semanal` a cada trinta segundos. O botão CSV busca `GET /relatorio-semanal/csv`. Se o monitoramento falhar, o indicador muda para “Desconectado”, as últimas leituras ficam identificadas como desatualizadas e o banner deixa de afirmar que o abastecimento é atual. A próxima consulta bem-sucedida restaura o estado normal. Falhas do relatório são apresentadas separadamente. O modo mock exige `?mock=1` e não é ativado como fallback de falhas.
 
 ## Registro de uma leitura
 
@@ -87,3 +110,4 @@ O pytest cobre schemas, regras de negócio, endpoints, CORS, relatório e CSV. O
 - O backend é local, sem autenticação, e o CORS permite origens de desenvolvimento específicas.
 - O SQLite atende à carga de demonstração. Escritas concorrentes disputam o mesmo banco e operações que excedam a espera por bloqueio podem falhar.
 - O relatório tem período fixo e cada consulta lê o histórico disponível naquele momento. O CSV contém o resumo por prato.
+- A carga semanal do simulador usa POSTs independentes e pode ficar parcial em caso de interrupção. Essa limitação é aceita para o Hackathon: não repita a carga cegamente e use outra instância com banco novo para uma nova demonstração completa, sem apagar a base anterior.

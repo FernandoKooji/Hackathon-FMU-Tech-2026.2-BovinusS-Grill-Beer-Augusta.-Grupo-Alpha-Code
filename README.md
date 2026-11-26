@@ -6,13 +6,13 @@ O Smart Buffet Analytics é um projeto do **Hackathon Tech FMU 2026.2** para o d
 
 ## Problema
 
-A equipe de um buffet precisa acompanhar quanto ainda há de cada alimento e quais cubas estão próximas de acabar. Verificações manuais ajudam na reposição imediata, mas dificultam a comparação do consumo entre pratos e dias.
+A equipe de um buffet precisa acompanhar quanto ainda há de cada alimento e quais cubas estão próximas de acabar. A verificação visual esporádica pode causar ruptura sem aviso e filas; a falta de histórico dificulta comparar o consumo entre pratos e dias e planejar compras e produção sem excesso de sobras.
 
 ## Solução proposta
 
 Cada leitura associa uma balança, um prato e um peso. A API calcula a disponibilidade da cuba, sinaliza a entrada em estado crítico e armazena as leituras para consulta posterior. O relatório semanal resume o consumo por prato e por dia e pode ser baixado como CSV.
 
-O MVP pode ser demonstrado com pesos simulados, enviados por um cliente HTTP ou pelo Swagger. Uma fonte futura com ESP32 e sensores de peso poderá enviar leituras pelo mesmo endpoint.
+O MVP pode ser demonstrado com pesos simulados, enviados por um cliente HTTP ou pelo Swagger. Uma fonte futura com ESP32 e sensores de peso poderá enviar leituras pelo mesmo endpoint, sem alterar o painel e o relatório. O sistema é de controle interno do buffet, sem exigir balança fiscal para cobrança no caixa.
 
 ## Funcionalidades
 
@@ -71,7 +71,8 @@ Veja o [documento de arquitetura](docs/architecture.md) para o modelo de dados e
 ├── docs/
 │   ├── api-integration.md
 │   ├── architecture.md
-│   └── demo-guide.md
+│   ├── demo-guide.md
+│   └── integration-report.md
 ├── frontend/
 │   └── dashboard.html
 ├── simuladores/
@@ -82,7 +83,8 @@ Veja o [documento de arquitetura](docs/architecture.md) para o modelo de dados e
 │   ├── test_leituras.py
 │   ├── test_limites_sqlite.py
 │   ├── test_relatorio.py
-│   └── test_schemas.py
+│   ├── test_schemas.py
+│   └── test_simulador.py
 ├── .gitignore
 ├── AGENTS.md
 ├── README.md
@@ -97,10 +99,10 @@ Veja o [documento de arquitetura](docs/architecture.md) para o modelo de dados e
 
 ## Instalação
 
-Use o worktree da branch local `integration/mvp` para executar os três componentes integrados. A branch ainda não foi publicada. Para instalar somente o backend a partir do remoto, clone `feature/backend` e acesse a pasta. Use uma revisão de entrega que inclua o schema SQLite preenchido, o módulo `app/utils/normalizacao.py` e `tzdata` em `requirements.txt`.
+Use o worktree da branch `integration/mvp` para executar os três componentes integrados. Para instalar em outro diretório, clone essa branch e acesse a pasta. A branch `feature/backend` contém somente o componente de backend.
 
 ```shell
-git clone --branch feature/backend https://github.com/FernandoKooji/projeto-hakathon-FMU-2026.2-
+git clone --branch integration/mvp https://github.com/FernandoKooji/projeto-hakathon-FMU-2026.2-
 cd projeto-hakathon-FMU-2026.2-
 python -m venv .venv
 ```
@@ -211,42 +213,12 @@ O [roteiro completo](docs/demo-guide.md) inclui um banco isolado, payloads copi�
 
 | Integrante | Responsabilidade |
 | --- | --- |
-| Integrante 1 | Simulador e geração de dados. |
-| Integrante 2 | Backend, banco de dados e relatórios. |
-| Integrante 3 | Dashboard e visualização. |
+| Integrante 1 | Entrada de dados e simulador: pesos e pratos, quedas, reposição e histórico semanal. |
+| Integrante 2 | Backend, banco de dados, regras de consumo e status e relatório semanal. |
+| Integrante 3 | Dashboard com atualização automática, avisos de reposição, relatório, cópia do resumo e CSV. |
 
 
-## Contexto do desafio e fluxo da equipe
-
-Descrição do Problema
-
-No self-service de uma churrascaria como o --Bovinos Grill--, o controle dos acompanhamentos nas cubas  costuma ser feito no olho ou por inspeção visual esporádica. Esse modelo gera dois problemas diretos na operação:
-
-* Ruptura sem aviso e filas: quando um prato acaba de repente e a cozinha só percebe depois que a cuba esvazia, o fluxo de atendimento trava e o cliente espera mais do que o necessário.
-* Desperdício e falta de previsibilidade: sem histórico confiável de saída por prato, a equipe tende a produzir em excesso por precaução — gerando sobras no fim do turno — ou a planejar compras e preparos semanais no achismo.
-
----
-
- Solução Proposta
-
-A solução é um sistema de telemetria operacional e relatório semanal  para as 5 posições do buffet, desenhado para funcionar hoje com dados inseridos/simulados manualmente e escalar depois para balanças ou módulos com ESP32:
-
-* Leitura contínua por posição   cada posição registra o peso atual do prato, permite alterar o nome do prato do dia e classifica o nível em `OK` (a partir de 50%), `ATENCAO` (entre 25% e 50%) ou `ACABANDO` (abaixo de 25%).
-* Aviso de reposição na cozinha: quando o nível cai abaixo de 25%, o painel destaca o prato em estado crítico para orientar a reposição antes que acabe.
-* Relatório semanal consolidado: as quedas de peso entre leituras são contabilizadas como consumo, gerando um resumo dos últimos 7 dias com o total consumido por prato e quantas vezes cada item entrou em `ACABANDO`.
-* Compatibilidade com hardware futuro: todas as leituras passam pela mesma entrada (`POST /leituras`), permitindo plugar uma zalança ou ESP32 no futuro sem alterar o painel ou o relatório, e sem exigir balança fiscal (por se tratar de controle interno, não de cobrança no caixa).
-
----
-
-  Detalhamento e Desenvolvimento do Projeto
-
-  1. Divisão do Trabalho Entre os 3 Integrantes
-
-* Integrante 1 (Você — Entrada de Dados / Simulador): cria a ferramenta para inserir pesos das posições, trocar o nome do prato, simular quedas até abaixo de 25%, simular reposição e gerar leituras de teste para o relatório semanal.
-* Integrante 2 (Backend & Relatório Semanal): implementa o recebimento das leituras, o cálculo de status e consumo, a persistência no banco e os dados do estado atual e do relatório dos últimos 7 dias.
-* Integrante 3 (Dashboard & Avisos): monta o painel com atualização automática, o destaque visual de pratos em `ACABANDO` e a visão do relatório semanal com opção de copiar ou baixar o resumo.
-
-  2. Fluxo de Desenvolvimento e Integração
+## Fluxo de desenvolvimento e integração
 
 1. Padronização inicial: alinhar os campos de envio de leitura (`balanca_id`, `prato`, `peso_atual_g`, `capacidade_max_g`, `origem`) e as rotas antes de codar em paralelo.
 2. Núcleo em tempo real: subir o envio de leituras, o cálculo de status e o painel exibindo as 5 posições e os avisos abaixo de 25%.
@@ -269,7 +241,7 @@ Na raiz do worktree `smart-buffet-integration`, use um ambiente Python com as de
    python -m simuladores.simulador_balancas --historico-semanal
    ```
 
-   O gerador envia 175 leituras pela API, em ordem cronológica, para cinco pratos com capacidade de 4.000 g. O resultado esperado é **112.000 g de consumo e 35 eventos de alerta**, com sete dias em São Paulo e timestamps UTC. Ele recusa o envio se a API já tiver leituras. Não remova o banco para repetir: use uma nova instância isolada, como no comando abaixo, na porta 8000 com a API anterior encerrada:
+   O gerador envia 175 leituras pela API, em ordem cronológica, para cinco pratos com capacidade de 4.000 g. O resultado esperado é **112.000 g de consumo e 35 eventos de alerta**, com sete dias em São Paulo e timestamps UTC. Prepare um banco inicialmente vazio e mantenha o simulador contínuo e qualquer outro processo de escrita parados até terminar a carga. O gerador recusa o envio se a API já tiver leituras. Não remova o banco para repetir: use uma nova instância isolada, como no comando abaixo, na porta 8000 com a API anterior encerrada:
 
    ```powershell
    python -c "from pathlib import Path; from tempfile import mkdtemp; import uvicorn; from app.database import database; database.DB_PATH = Path(mkdtemp(prefix='smart-buffet-integrado-')) / 'demo.db'; uvicorn.run('app.main:app', host='127.0.0.1', port=8000)"
@@ -281,7 +253,7 @@ Na raiz do worktree `smart-buffet-integration`, use um ambiente Python com as de
    python -m http.server 5500 --bind 127.0.0.1 --directory frontend
    ```
 
-   Abra [o dashboard ao vivo](http://127.0.0.1:5500/dashboard.html). Ele consulta a API na porta 8000, atualiza as cubas a cada três segundos e o relatório a cada trinta segundos. O botão CSV baixa o arquivo gerado pelo backend. O [modo demonstrativo opcional](http://127.0.0.1:5500/dashboard.html?mock=1) usa dados fictícios e aparece identificado como “Simulação”.
+   Abra [o dashboard ao vivo](http://127.0.0.1:5500/dashboard.html). Ele consulta a API na porta 8000, atualiza as cubas a cada três segundos e o relatório a cada trinta segundos. Se o monitoramento falhar, o painel mostra “Desconectado”, identifica as últimas leituras como desatualizadas e continua tentando reconectar. Uma falha isolada no relatório não altera a conexão das balanças. O botão CSV baixa o arquivo gerado pelo backend. O [modo demonstrativo opcional](http://127.0.0.1:5500/dashboard.html?mock=1) usa dados fictícios e aparece identificado como “Simulação”.
 
 4. Para continuar gerando leituras reais, execute em outro terminal:
 
@@ -291,6 +263,6 @@ Na raiz do worktree `smart-buffet-integration`, use um ambiente Python com as de
 
    Encerre com `Ctrl+C`. Para uma execução curta, use `--ciclos 3 --intervalo 1 --seed 42`. Para imprimir sem enviar, acrescente `--somente-imprimir`. Uma API em outra porta pode ser selecionada com `--url http://127.0.0.1:8001`; ajuste também `API_URL` no dashboard caso queira consultá-la.
 
-A API recebe pesos e capacidades em **gramas inteiras**, com origem `simulador`, `manual` ou `esp32`. O simulador usa `httpx`, já presente nas dependências, e informa falhas de conexão ou rejeição da API. Não repete automaticamente um POST que possa já ter sido gravado. Se uma carga semanal falhar parcialmente, os registros aceitos permanecem no banco; use outra instância isolada para repetir a demonstração completa.
+A API recebe pesos e capacidades em **gramas inteiras**, com origem `simulador`, `manual` ou `esp32`. O simulador usa `httpx`, já presente nas dependências, e informa falhas de conexão ou rejeição da API. Não repete automaticamente um POST que possa já ter sido gravado. A carga semanal usa POSTs independentes: se for interrompida, os registros aceitos permanecem no banco. Não repita a carga cegamente após uma falha; confira os dados e use outra instância isolada com banco novo para repetir a demonstração completa, preservando a base anterior.
 
 Veja [o relatório da integração](docs/integration-report.md) para as revisões utilizadas, validações e pendências.

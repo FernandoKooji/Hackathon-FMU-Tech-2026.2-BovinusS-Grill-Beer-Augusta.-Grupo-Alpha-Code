@@ -14,11 +14,13 @@ header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:bas
 h1{font-size:1.4rem;margin:0}h2{font-size:1.1rem;margin:24px 0 10px}
 .mut{color:var(--mut);font-size:.85rem}
 .tag{border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:.8rem;color:var(--mut)}
+.tag.desconectado{border-color:var(--bad);color:var(--bad)}
 .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .kpi b{display:block;font-size:1.6rem}
 #alerta{margin:12px 0;padding:10px 14px;border-radius:10px;border:1px solid var(--bad);color:var(--bad);font-weight:600}
 #alerta.off{border-color:var(--line);color:var(--ok);font-weight:400}
+#alerta.indisponivel{border-color:var(--mut);color:var(--mut);font-weight:400}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
 .cuba{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;border-left:6px solid var(--ok)}
 .cuba.att{border-left-color:var(--att)}.cuba.bad{border-left-color:var(--bad)}
@@ -26,6 +28,9 @@ h1{font-size:1.4rem;margin:0}h2{font-size:1.1rem;margin:24px 0 10px}
 .st{font-weight:700;font-size:.85rem;color:var(--ok)}.att .st{color:var(--att)}.bad .st{color:var(--bad)}
 .bar{height:10px;background:var(--line);border-radius:6px;margin:8px 0 4px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--ok);transition:width .4s}.att .bar i{background:var(--att)}.bad .bar i{background:var(--bad)}
+.desatualizado .cuba{border-left-color:var(--mut)}
+.desatualizado .st,.kpi.desatualizado b{color:var(--mut)}
+.desatualizado .bar i{background:var(--mut)}
 .scroll{overflow-x:auto}
 table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}
 th,td{padding:8px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}th:first-child,td:first-child{text-align:left}
@@ -42,16 +47,17 @@ button:focus-visible{outline:3px solid var(--att);outline-offset:2px}
 <main>
 <header>
   <h1>Bovinos Grill · Buffet</h1>
-  <span><span class="tag" id="modo"></span> <span class="mut" id="atual"></span></span>
+  <span><span class="tag" id="modo" role="status"></span> <span class="mut" id="atual"></span></span>
 </header>
-<p class="erro" id="erro"></p>
+<p class="erro" id="erro" role="status"></p>
 
 <section class="kpis">
   <div class="kpi"><span class="mut">Balanças monitoradas</span><b id="k1">–</b></div>
   <div class="kpi"><span class="mut">Pratos acabando</span><b id="k2">–</b></div>
   <div class="kpi"><span class="mut">Consumo na semana</span><b id="k3">–</b></div>
 </section>
-<div id="alerta" class="off">Aguardando leituras…</div>
+<div id="alerta" class="indisponivel" role="status">Aguardando leituras…</div>
+<p class="mut" id="estado-leituras" hidden>Últimas leituras conhecidas — dados desatualizados.</p>
 <section class="grid" id="cubas"></section>
 
 <h2>Relatório semanal</h2>
@@ -79,7 +85,10 @@ const ROTULO = {OK:"OK", ATENCAO:"ATENÇÃO", ACABANDO:"ACABANDO"}, CLS = {OK:""
 const calc = p => p < LIMITE_ACABANDO ? "ACABANDO" : p < LIMITE_ATENCAO ? "ATENCAO" : "OK";
 const kg = g => (g/1000).toLocaleString("pt-BR",{maximumFractionDigits:1});
 const dm = d => d.slice(8,10)+"/"+d.slice(5,7);
-const mostrarErro = (id,e) => { const el=$(id); el.textContent = e ? "Falha ao consultar a API ("+e.message+"). Confira se o backend está no ar e a URL em API_URL." : ""; el.style.display = e ? "block" : "none"; };
+const mostrarErro = (id,e) => { const el=$(id); el.textContent = !e ? "" : id==="erro"
+  ? "Sem comunicação com o monitoramento. Tentaremos novamente automaticamente."
+  : "Relatório semanal indisponível. Os dados exibidos podem estar desatualizados; tentaremos novamente.";
+  el.style.display = e ? "block" : "none"; };
 
 // ===== Dados simulados (ignorados quando USAR_MOCK = false) =====
 let mock = [["Arroz",2700],["Feijão",2100],["Carne",800],["Massas",3500],["Legumes",1600]]
@@ -182,15 +191,40 @@ $("copiar").onclick = async ()=>{
 };
 
 // ===== Ciclos de atualização =====
+let ultimaAtualizacao = null, temLeiturasConhecidas = false, consultandoEstado = false;
+function indicarConexao(conectado){
+  $("modo").textContent = USAR_MOCK ? "Simulação" : conectado ? "Ao vivo" : "Desconectado";
+  $("modo").classList.toggle("desconectado", !conectado);
+  const desatualizado = !conectado && temLeiturasConhecidas;
+  $("cubas").classList.toggle("desatualizado", desatualizado);
+  ["k1","k2"].forEach(id=>$(id).closest(".kpi").classList.toggle("desatualizado", desatualizado));
+  $("estado-leituras").hidden = !desatualizado;
+  $("atual").textContent = ultimaAtualizacao
+    ? (conectado ? "Atualizado às " : "Última atualização às ")+ultimaAtualizacao : "";
+  if(!conectado){
+    $("alerta").className = "indisponivel";
+    $("alerta").textContent = temLeiturasConhecidas
+      ? "Sem comunicação com a API. O abastecimento atual não pode ser confirmado."
+      : "Sem comunicação com a API. Nenhuma leitura disponível.";
+  }
+}
 async function atualizarEstado(){
-  try{ pintarEstado(await get("/estado-atual")); mostrarErro("erro",null); $("atual").textContent="Atualizado às "+new Date().toLocaleTimeString("pt-BR"); }
-  catch(e){ mostrarErro("erro",e); }
+  if(consultandoEstado) return;
+  consultandoEstado = true;
+  try{
+    pintarEstado(await get("/estado-atual"));
+    temLeiturasConhecidas = $("cubas").children.length > 0;
+    ultimaAtualizacao = new Date().toLocaleTimeString("pt-BR");
+    mostrarErro("erro",null); indicarConexao(true);
+  }
+  catch(e){ mostrarErro("erro",e); indicarConexao(false); }
+  finally{ consultandoEstado = false; }
 }
 async function atualizarRelatorio(){
   try{ pintarRelatorio(await get("/relatorio-semanal")); mostrarErro("erro2",null); }
   catch(e){ mostrarErro("erro2",e); }
 }
-$("modo").textContent = USAR_MOCK ? "Simulação" : "Ao vivo";
+$("modo").textContent = USAR_MOCK ? "Simulação" : "Conectando…";
 atualizarRelatorio(); atualizarEstado();
 setInterval(atualizarEstado, INTERVALO_MS);
 setInterval(atualizarRelatorio, 30000);

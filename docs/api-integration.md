@@ -101,6 +101,8 @@ Este é um exemplo de resposta `201 Created` para a primeira leitura da balança
 
 ### Histórico para a demonstração
 
+Para a carga semanal pelo simulador, prepare uma instância com banco inicialmente vazio e execute o histórico antes de enviar leituras em tempo real. Mantenha todos os outros processos de escrita parados durante a geração. Os 175 POSTs são independentes: uma interrupção pode deixar uma carga parcial. Não repita a carga cegamente após uma falha; confira os registros aceitos e use outra instância isolada com banco novo para repetir a demonstração, sem excluir a base anterior. Essa limitação é aceita no MVP. Os [comandos do sistema integrado](../README.md#executar-os-três-componentes-integrados) incluem a execução com banco temporário.
+
 1. Antes de iniciar a simulação em tempo real, escolha datas dentro do período retornado por `GET /relatorio-semanal`.
 2. Envie as leituras por `POST /leituras` da mais antiga para a mais recente **em cada balança**. Defina `criado_em` explicitamente com o fuso e use apenas instantes passados. A primeira leitura de cada prato na balança é a referência de peso para as reduções seguintes.
 3. Confira o histórico pelo relatório JSON ou CSV. Em seguida, inicie a simulação em tempo real com `criado_em` omitido ou `null`. Se a balança já tiver uma leitura mais recente do que o histórico a enviar, o backend retorna `409`.
@@ -127,6 +129,8 @@ Consulte `GET /estado-atual` para exibir as balanças. A lista contém a leitura
 ```
 
 Antes da primeira leitura, a API retorna `{"balancas": [], "total_monitoradas": 0, "total_acabando": 0}`.
+
+O dashboard consulta o estado a cada três segundos. Uma falha nessa consulta muda o indicador para “Desconectado”, preserva os últimos valores com a identificação de dados desatualizados e suspende o banner de abastecimento atual. Antes de qualquer leitura válida, informa que não há leitura disponível. O polling continua e restaura o painel automaticamente após uma consulta bem-sucedida. O relatório tem consulta e mensagem de erro próprias; uma falha somente nele não desconecta o monitoramento.
 
 ## Relatório semanal
 
