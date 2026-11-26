@@ -161,7 +161,7 @@ function pintarRelatorio(raw){
 }
 function resumoTexto(){
   if(rel.texto) return rel.texto;
-  return ["Relatório semanal — Bovinos Grill", ...rel.pratos.map((p,i)=>`${i+1}. ${p.prato}: ${kg(p.consumo_g)} kg, ${p.alertas} vezes acabando`)].join("\n");
+  return ["Relatório semanal — Bovinu'S Grill", ...rel.pratos.map((p,i)=>`${i+1}. ${p.prato}: ${kg(p.consumo_g)} kg, ${p.alertas} vezes acabando`)].join("\n");
 }
 function baixarArquivo(blob, nome){
   const url = URL.createObjectURL(blob), a = document.createElement("a");
