@@ -5,6 +5,8 @@
 
 ## Apresentação
 
+LINK PARA APRESENTAÇÃO E VIDEO: https://drive.google.com/drive/folders/1L3QHWD2KckxwZmeTsMsRW8bxtgIpdblD?usp=sharing
+
 O Smart Buffet Analytics é um MVP de monitoramento de disponibilidade e consumo estimado de alimentos em buffets. A proposta é apoiar a reposição preventiva, reduzir interrupções no atendimento e oferecer dados para o planejamento da produção.
 
 ## Descrição do problema
