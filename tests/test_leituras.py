@@ -102,6 +102,28 @@ def test_variacao_de_caixa_preserva_consumo_e_nome(banco_temporario):
     assert leitura.prato == "FEIJÃO"
 
 
+@pytest.mark.parametrize(
+    ("nome_inicial", "nome_variante"),
+    [("Feijão", "FEIJA\u0303O"), ("Feija\u0303o", "FEIJÃO")],
+    ids=["composto_para_decomposto", "decomposto_para_composto"],
+)
+def test_unicode_equivalente_preserva_consumo_alertas_e_nomes(
+    banco_temporario, nome_inicial, nome_variante
+):
+    nomes = [nome_inicial, nome_inicial, nome_variante, nome_variante, nome_inicial, "Feijao"]
+    pesos = [3000, 900, 800, 4000, 700, 600]
+
+    leituras = [_registrar(peso, prato=nome) for peso, nome in zip(pesos, nomes, strict=True)]
+
+    assert [leitura.consumo_g for leitura in leituras] == [0, 2100, 100, 0, 3300, 0]
+    assert [leitura.novo_alerta for leitura in leituras] == [0, 1, 0, 0, 1, 1]
+    assert [leitura.prato for leitura in leituras] == nomes
+    registros = _registros()
+    assert [registro["prato"] for registro in registros] == nomes
+    assert [registro["consumo_g"] for registro in registros] == [0, 2100, 100, 0, 3300, 0]
+    assert [registro["novo_alerta"] for registro in registros] == [0, 1, 0, 0, 1, 1]
+
+
 def test_balancas_tem_consumo_e_alertas_independentes(banco_temporario):
     _registrar(3000)
     primeira_balanca_2 = _registrar(800, balanca_id=2)

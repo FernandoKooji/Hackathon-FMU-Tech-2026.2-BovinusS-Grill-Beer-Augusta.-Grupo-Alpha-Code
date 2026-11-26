@@ -9,6 +9,9 @@ CAPACIDADE_PADRAO_G = 4000
 
 PESO_MINIMO_G = 0
 
+# Limite de armazenamento de um INTEGER assinado de 64 bits no SQLite.
+SQLITE_INTEGER_MAX = 2**63 - 1
+
 
 # ========================================
 # STATUS DAS CUBAS

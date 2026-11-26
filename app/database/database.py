@@ -16,9 +16,12 @@ def get_connection():
         timeout=10
     )
 
-    connection.row_factory = sqlite3.Row
-
-    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.Error:
+        connection.close()
+        raise
 
     return connection
 

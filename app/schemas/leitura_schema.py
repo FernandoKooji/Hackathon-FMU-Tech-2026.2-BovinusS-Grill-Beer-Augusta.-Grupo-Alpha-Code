@@ -9,14 +9,17 @@ from app.utils.constants import (
     ORIGEM_PADRAO,
     ORIGENS_VALIDAS,
     PESO_MINIMO_G,
+    SQLITE_INTEGER_MAX,
 )
 
 
 class LeituraRequest(BaseModel):
     balanca_id: int = Field(ge=BALANCA_ID_MIN, le=BALANCA_ID_MAX, strict=True)
     prato: str
-    peso_atual_g: int = Field(ge=PESO_MINIMO_G, strict=True)
-    capacidade_max_g: int = Field(default=CAPACIDADE_PADRAO_G, gt=0, strict=True)
+    peso_atual_g: int = Field(ge=PESO_MINIMO_G, le=SQLITE_INTEGER_MAX, strict=True)
+    capacidade_max_g: int = Field(
+        default=CAPACIDADE_PADRAO_G, gt=0, le=SQLITE_INTEGER_MAX, strict=True
+    )
     origem: str = ORIGEM_PADRAO
     criado_em: datetime | None = None
 
@@ -26,6 +29,8 @@ class LeituraRequest(BaseModel):
         prato = valor.strip()
         if not prato:
             raise ValueError("O nome do prato não pode estar vazio.")
+        if "\x00" in prato:
+            raise ValueError("O nome do prato não pode conter caractere nulo.")
         return prato
 
     @field_validator("origem")

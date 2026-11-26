@@ -10,6 +10,8 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
+Se o PowerShell bloquear o script de ativação, use `.\.venv\Scripts\python.exe` no lugar de `python` a partir do comando de instalação.
+
 No Linux ou macOS, ative o ambiente com `source .venv/bin/activate` antes de instalar as dependências.
 
 A dependência `tzdata` fornece a base de fusos horários usada por `zoneinfo` em sistemas sem uma base IANA instalada, como o Windows.
@@ -21,6 +23,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 A API local usa a URL base `http://127.0.0.1:8000`. O SQLite é inicializado na partida. O simulador pode enviar leituras assim que `GET /health` retornar `200`.
+
+Para testar pela documentação interativa com um banco SQLite isolado, siga o [roteiro de demonstração](demo-guide.md).
 
 ## Endpoints
 
@@ -61,7 +65,16 @@ Também é possível enviar os campos opcionais.
 }
 ```
 
-O peso e a capacidade são números inteiros em gramas. A capacidade padrão é `4000` e a origem padrão é `simulador`. As demais origens aceitas são `manual` e `esp32`. Com `criado_em` omitido ou `null`, o servidor usa o horário atual em UTC. Para enviar uma data específica, use ISO 8601 com fuso, por exemplo `2025-01-01T09:00:00-03:00`.
+| Campo | Tipo | Regras |
+| --- | --- | --- |
+| `balanca_id` | Inteiro | Obrigatório, de 1 a 5. |
+| `prato` | Texto | Obrigatório. O servidor remove espaços nas extremidades e rejeita texto vazio ou com caractere nulo. |
+| `peso_atual_g` | Inteiro | Obrigatório, de zero até a capacidade. Unidade em gramas. |
+| `capacidade_max_g` | Inteiro | Opcional, maior que zero. Padrão de 4.000 g. |
+| `origem` | Texto | Opcional. Aceita `simulador`, `manual` ou `esp32`. Padrão `simulador`. |
+| `criado_em` | Texto ou `null` | Opcional. Com `null` ou campo omitido, usa o horário atual do servidor. |
+
+Para enviar uma data específica, use ISO 8601 com fuso, por exemplo `2025-01-01T09:00:00-03:00`. A API rejeita datas futuras e retorna timestamps de leitura em UTC.
 
 Este é um exemplo de resposta `201 Created` para a primeira leitura da balança.
 
@@ -81,7 +94,10 @@ Este é um exemplo de resposta `201 Created` para a primeira leitura da balança
 }
 ```
 
-`422 Unprocessable Entity` indica um payload inválido e traz os erros em `detail`. `409 Conflict` indica que a data é anterior à última leitura da mesma balança e traz uma mensagem em `detail`.
+`novo_alerta` é um inteiro que vale `1` para um novo evento e `0` nas demais leituras. `consumo_g` é a quantidade estimada retirada da cuba desde a leitura anterior do mesmo prato.
+
+- `422 Unprocessable Entity` indica um payload inválido e traz a lista de erros em `detail`.
+- `409 Conflict` indica uma leitura anterior à última da mesma balança e traz uma mensagem em `detail`. Timestamps iguais são aceitos e desempatados pelo ID.
 
 ### Histórico para a demonstração
 
@@ -118,7 +134,7 @@ Antes da primeira leitura, a API retorna `{"balancas": [], "total_monitoradas": 
 
 `consumo_g` é a estimativa de quanto foi retirado da cuba. O indicador não mede vendas efetivamente registradas. Reposições contribuem com zero gramas. `total_alertas` soma os novos alertas registrados, sem repetir o evento a cada leitura consecutiva no estado `ACABANDO`. Os totais incluem todas as origens, inclusive `simulador`.
 
-Os pratos são agrupados por nome sem distinção de maiúsculas e minúsculas, também para nomes acentuados. O relatório exibe o nome da primeira leitura do grupo no período. O ranking vai do maior ao menor consumo em gramas, com desempate pelo nome sem distinção de maiúsculas e minúsculas. `consumo_diario` contém os sete dias em ordem cronológica, com zero nos dias sem consumo.
+Os pratos são agrupados por nome, considerando equivalentes as diferenças de caixa e as formas Unicode equivalentes do mesmo nome. O relatório exibe a grafia da primeira leitura do grupo no período. O ranking vai do maior ao menor consumo em gramas, com desempate pelo nome normalizado. `consumo_diario` contém os sete dias em ordem cronológica, com zero nos dias sem consumo.
 
 Exemplo do contrato JSON para um período ilustrativo.
 

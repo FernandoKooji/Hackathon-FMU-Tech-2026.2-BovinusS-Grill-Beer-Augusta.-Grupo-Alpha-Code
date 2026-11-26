@@ -22,6 +22,7 @@ from app.utils.constants import (
     STATUS_ATENCAO,
     STATUS_OK,
 )
+from app.utils.normalizacao import chave_prato
 
 
 class LeituraForaDeOrdemError(ValueError):
@@ -67,7 +68,7 @@ def registrar_leitura(dados: LeituraRequest) -> LeituraResponse:
                 raise LeituraForaDeOrdemError(
                     f"A leitura é anterior à última leitura da balança {dados.balanca_id}."
                 )
-            if dados.prato.casefold() == ultima["prato"].casefold():
+            if chave_prato(dados.prato) == chave_prato(ultima["prato"]):
                 peso_anterior_g = ultima["peso_atual_g"]
                 status_anterior = ultima["status"]
 
