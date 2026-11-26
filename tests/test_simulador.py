@@ -78,3 +78,16 @@ def test_cli_envia_ciclo_finito(cliente, monkeypatch):
     monkeypatch.setattr("sys.argv", ["simulador", "--ciclos", "1", "--intervalo", "0"])
     assert simulador.main() == 0
     assert cliente.get("/estado-atual").json()["total_monitoradas"] == 5
+
+
+def test_historico_inclui_dia_atual_exatamente_na_meia_noite():
+    from zoneinfo import ZoneInfo
+
+    agora = datetime(2025, 1, 4, 3, tzinfo=timezone.utc)
+    leituras = list(simulador.gerar_historico_semanal(agora))
+    instantes = [datetime.fromisoformat(l["criado_em"]) for l in leituras]
+    dias = {instante.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat() for instante in instantes}
+    assert len(dias) == 7
+    assert min(dias) == "2024-12-29"
+    assert max(dias) == "2025-01-04"
+    assert max(instantes) <= agora

@@ -1,13 +1,18 @@
-﻿import argparse
+import argparse
 import json
 import math
 import random
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, time as hora, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.utils.constants import CAPACIDADE_PADRAO_G, ORIGEM_SIMULADOR, TIMEZONE_LOCAL
 
@@ -66,7 +71,7 @@ def criar_balancas() -> list[Balanca]:
 def gerar_historico_semanal(agora: datetime | None = None):
     """Sete dias locais, com consumo, alerta consecutivo e reposição por dia."""
     fuso = ZoneInfo(TIMEZONE_LOCAL)
-    fim = (agora or datetime.now(timezone.utc)).astimezone(fuso) - timedelta(seconds=1)
+    fim = (agora or datetime.now(timezone.utc)).astimezone(fuso)
     balancas = criar_balancas()
     pesos = [4000, 2000, 900, 800, 4000]
     for indice in range(7):

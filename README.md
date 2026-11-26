@@ -38,7 +38,7 @@ O MVP pode ser demonstrado com pesos simulados, enviados por um cliente HTTP ou 
 flowchart LR
     Sim["Simulador ou envio manual"] -->|"POST /leituras"| API["API FastAPI"]
     IoT["Fonte IoT futura"] -.-> API
-    Dash["Dashboard, cliente previsto"] -->|"Consultas GET"| API
+    Dash["Dashboard de monitoramento"] -->|"Consultas GET"| API
     API --> Servicos["Serviços de leituras e relatórios"]
     Servicos --> Banco[("SQLite")]
     API --> Saidas["Estado atual, relatório semanal em JSON e CSV"]
@@ -72,6 +72,10 @@ Veja o [documento de arquitetura](docs/architecture.md) para o modelo de dados e
 │   ├── api-integration.md
 │   ├── architecture.md
 │   └── demo-guide.md
+├── frontend/
+│   └── dashboard.html
+├── simuladores/
+│   └── simulador_balancas.py
 ├── tests/
 │   ├── test_api.py
 │   ├── test_integracao.py
@@ -93,7 +97,7 @@ Veja o [documento de arquitetura](docs/architecture.md) para o modelo de dados e
 
 ## Instalação
 
-Clone a branch de backend e acesse a pasta. Use uma revisão de entrega que inclua o schema SQLite preenchido, o módulo `app/utils/normalizacao.py` e `tzdata` em `requirements.txt`.
+Use o worktree da branch local `integration/mvp` para executar os três componentes integrados. A branch ainda não foi publicada. Para instalar somente o backend a partir do remoto, clone `feature/backend` e acesse a pasta. Use uma revisão de entrega que inclua o schema SQLite preenchido, o módulo `app/utils/normalizacao.py` e `tzdata` em `requirements.txt`.
 
 ```shell
 git clone --branch feature/backend https://github.com/FernandoKooji/projeto-hakathon-FMU-2026.2-
@@ -173,7 +177,7 @@ python -m pytest -v
 python -m pytest -q
 ```
 
-Os testes que acessam o SQLite usam bancos em diretórios temporários. A validação da Etapa 14 executou **122 testes com sucesso**.
+Os testes que acessam o SQLite usam bancos em diretórios temporários. A validação integrada executou **128 testes com sucesso** no Python 3.15.2. Python 3.11 não estava instalado neste ambiente para verificação.
 
 ## Demonstração
 
@@ -248,3 +252,45 @@ A solução é um sistema de telemetria operacional e relatório semanal  para a
 2. Núcleo em tempo real: subir o envio de leituras, o cálculo de status e o painel exibindo as 5 posições e os avisos abaixo de 25%.
 3. Ciclo de reposição e relatório: testar a subida de peso na reposição (sem contar como consumo) e validar o consolidado semanal com dados de teste.
 4. Refinamento e consistência: tratar valores inválidos (como peso negativo ou acima da capacidade máxima) e conferir se o painel reflete as mudanças sem travar.
+
+## Executar os três componentes integrados
+
+Na raiz do worktree `smart-buffet-integration`, use um ambiente Python com as dependências de `requirements.txt`. Os comandos abaixo presumem que `python` aponta para esse ambiente. Cada servidor deve ficar em seu próprio terminal.
+
+1. Inicie a API, preservando qualquer banco já existente:
+
+   ```powershell
+   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+
+2. Para preencher os sete dias, execute **antes do simulador contínuo**:
+
+   ```powershell
+   python -m simuladores.simulador_balancas --historico-semanal
+   ```
+
+   O gerador envia 175 leituras pela API, em ordem cronológica, para cinco pratos com capacidade de 4.000 g. O resultado esperado é **112.000 g de consumo e 35 eventos de alerta**, com sete dias em São Paulo e timestamps UTC. Ele recusa o envio se a API já tiver leituras. Não remova o banco para repetir: use uma nova instância isolada, como no comando abaixo, na porta 8000 com a API anterior encerrada:
+
+   ```powershell
+   python -c "from pathlib import Path; from tempfile import mkdtemp; import uvicorn; from app.database import database; database.DB_PATH = Path(mkdtemp(prefix='smart-buffet-integrado-')) / 'demo.db'; uvicorn.run('app.main:app', host='127.0.0.1', port=8000)"
+   ```
+
+3. Sirva o dashboard em outro terminal:
+
+   ```powershell
+   python -m http.server 5500 --bind 127.0.0.1 --directory frontend
+   ```
+
+   Abra [o dashboard ao vivo](http://127.0.0.1:5500/dashboard.html). Ele consulta a API na porta 8000, atualiza as cubas a cada três segundos e o relatório a cada trinta segundos. O botão CSV baixa o arquivo gerado pelo backend. O [modo demonstrativo opcional](http://127.0.0.1:5500/dashboard.html?mock=1) usa dados fictícios e aparece identificado como “Simulação”.
+
+4. Para continuar gerando leituras reais, execute em outro terminal:
+
+   ```powershell
+   python -m simuladores.simulador_balancas
+   ```
+
+   Encerre com `Ctrl+C`. Para uma execução curta, use `--ciclos 3 --intervalo 1 --seed 42`. Para imprimir sem enviar, acrescente `--somente-imprimir`. Uma API em outra porta pode ser selecionada com `--url http://127.0.0.1:8001`; ajuste também `API_URL` no dashboard caso queira consultá-la.
+
+A API recebe pesos e capacidades em **gramas inteiras**, com origem `simulador`, `manual` ou `esp32`. O simulador usa `httpx`, já presente nas dependências, e informa falhas de conexão ou rejeição da API. Não repete automaticamente um POST que possa já ter sido gravado. Se uma carga semanal falhar parcialmente, os registros aceitos permanecem no banco; use outra instância isolada para repetir a demonstração completa.
+
+Veja [o relatório da integração](docs/integration-report.md) para as revisões utilizadas, validações e pendências.

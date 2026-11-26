@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Buffet Analytics</title>
+<style>
+:root{--bg:#eef0ec;--card:#fff;--ink:#1d2a26;--mut:#66736d;--line:#d9ded9;--ok:#2f7d5b;--att:#c98a00;--bad:#c2362b;--acc:#24413a}
+@media (prefers-color-scheme:dark){:root{--bg:#161d1a;--card:#202a26;--ink:#e8eee9;--mut:#9aa7a0;--line:#33413b;--ok:#4fb888;--att:#e0a92c;--bad:#ef6a5e;--acc:#8fd1b5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Segoe UI",Roboto,system-ui,sans-serif}
+main{max-width:960px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:12px}
+h1{font-size:1.4rem;margin:0}h2{font-size:1.1rem;margin:24px 0 10px}
+.mut{color:var(--mut);font-size:.85rem}
+.tag{border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:.8rem;color:var(--mut)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi b{display:block;font-size:1.6rem}
+#alerta{margin:12px 0;padding:10px 14px;border-radius:10px;border:1px solid var(--bad);color:var(--bad);font-weight:600}
+#alerta.off{border-color:var(--line);color:var(--ok);font-weight:400}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.cuba{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;border-left:6px solid var(--ok)}
+.cuba.att{border-left-color:var(--att)}.cuba.bad{border-left-color:var(--bad)}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.st{font-weight:700;font-size:.85rem;color:var(--ok)}.att .st{color:var(--att)}.bad .st{color:var(--bad)}
+.bar{height:10px;background:var(--line);border-radius:6px;margin:8px 0 4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);transition:width .4s}.att .bar i{background:var(--att)}.bad .bar i{background:var(--bad)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}
+th,td{padding:8px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}th:first-child,td:first-child{text-align:left}
+.rb{display:grid;grid-template-columns:84px 1fr 64px;gap:8px;align-items:center;margin:6px 0}
+.rb .bar{margin:0;height:16px}.rb .bar i{background:var(--acc)}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+button{font:inherit;background:var(--acc);color:var(--bg);border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--att);outline-offset:2px}
+.erro{color:var(--bad);display:none;margin:8px 0}
+@media(max-width:520px){.kpis{grid-template-columns:1fr 1fr}.kpi:last-child{grid-column:span 2}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Bovinos Grill · Buffet</h1>
+  <span><span class="tag" id="modo"></span> <span class="mut" id="atual"></span></span>
+</header>
+<p class="erro" id="erro"></p>
+
+<section class="kpis">
+  <div class="kpi"><span class="mut">Balanças monitoradas</span><b id="k1">–</b></div>
+  <div class="kpi"><span class="mut">Pratos acabando</span><b id="k2">–</b></div>
+  <div class="kpi"><span class="mut">Consumo na semana</span><b id="k3">–</b></div>
+</section>
+<div id="alerta" class="off">Aguardando leituras…</div>
+<section class="grid" id="cubas"></section>
+
+<h2>Relatório semanal</h2>
+<p class="erro" id="erro2"></p>
+<div id="graf"></div>
+<div class="scroll"><table id="tab"><thead><tr><th>Prato</th><th>Consumo</th><th>Vezes acabando</th></tr></thead><tbody></tbody></table></div>
+<h2>Consumo por dia (g)</h2>
+<div class="scroll"><table id="dias"><thead></thead><tbody></tbody></table></div>
+<div class="btns"><button id="csv">Baixar CSV</button><button id="copiar">Copiar resumo</button><span class="mut" id="msg"></span></div>
+</main>
+
+<script>
+// ===== Configuração (combinada com o grupo) =====
+const API_URL = "http://127.0.0.1:8000";
+const USAR_MOCK = new URLSearchParams(location.search).get("mock") === "1"; // modo demonstrativo opcional: ?mock=1
+const INTERVALO_MS = 3000;        // GET /estado-atual a cada 3 s
+const LIMITE_ACABANDO = 25;       // < 25% = ACABANDO (definido no documento)
+const LIMITE_ATENCAO = 50;        // igual ao backend; só vale se a API não enviar o status
+
+// ===== Utilitários =====
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const semAcento = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
+const ROTULO = {OK:"OK", ATENCAO:"ATENÇÃO", ACABANDO:"ACABANDO"}, CLS = {OK:"", ATENCAO:"att", ACABANDO:"bad"};
+const calc = p => p < LIMITE_ACABANDO ? "ACABANDO" : p < LIMITE_ATENCAO ? "ATENCAO" : "OK";
+const kg = g => (g/1000).toLocaleString("pt-BR",{maximumFractionDigits:1});
+const dm = d => d.slice(8,10)+"/"+d.slice(5,7);
+const mostrarErro = (id,e) => { const el=$(id); el.textContent = e ? "Falha ao consultar a API ("+e.message+"). Confira se o backend está no ar e a URL em API_URL." : ""; el.style.display = e ? "block" : "none"; };
+
+// ===== Dados simulados (ignorados quando USAR_MOCK = false) =====
+let mock = [["Arroz",2700],["Feijão",2100],["Carne",800],["Massas",3500],["Legumes",1600]]
+  .map(([prato,p],i)=>({balanca_id:i+1,prato,peso_atual_g:p,capacidade_max_g:4000,consumo_g:0,origem:"simulador"}));
+function mockEstado(){
+  mock.forEach(c=>{ const d=Math.round(Math.random()*120); c.peso_atual_g=Math.max(0,c.peso_atual_g-d); c.consumo_g=d;
+    if(c.peso_atual_g<150) c.peso_atual_g=c.capacidade_max_g; });
+  return mock.map(c=>({...c}));
+}
+function mockRelatorio(){
+  const dias=[...Array(7)].map((_,i)=>{const d=new Date(); d.setDate(d.getDate()-6+i); return d.toISOString().slice(0,10);});
+  const base={"Carne":[87,24],"Arroz":[65,18],"Feijão":[48,12],"Massas":[32,8],"Legumes":[19,3]};
+  return {pratos:Object.entries(base).map(([prato,[k,al]])=>{
+    const por_dia=dias.map(dia=>({dia,consumo_g:Math.round(k*1000/7*(0.7+Math.random()*0.6))}));
+    return {prato,consumo_g:por_dia.reduce((s,x)=>s+x.consumo_g,0),alertas_acabando:al,por_dia};
+  })};
+}
+
+// ===== Acesso à API =====
+async function get(path){
+  if(USAR_MOCK) return path==="/estado-atual" ? mockEstado() : mockRelatorio();
+  const r = await fetch(API_URL+path, {signal: AbortSignal.timeout(10000)}); if(!r.ok) throw new Error(path+" → "+r.status); return r.json();
+}
+
+// ===== Painel de pesos =====
+let totalSemana = null;
+function pintarEstado(raw){
+  const lista = (Array.isArray(raw) ? raw : raw.balancas || []).map(c=>{
+    const cap = c.capacidade_max_g || 4000, percentual = c.peso_atual_g/cap*100;
+    const p = Math.max(0, Math.min(100, Math.round(percentual)));
+    let st = c.status ? semAcento(c.status) : calc(percentual); if(!ROTULO[st]) st = calc(percentual);
+    return {...c, cap, p, st};
+  }).sort((a,b)=>a.balanca_id-b.balanca_id);
+  const acabando = lista.filter(c=>c.st==="ACABANDO");
+  $("k1").textContent = lista.length;
+  $("k2").textContent = acabando.length;
+  $("k3").textContent = totalSemana===null ? "–" : kg(totalSemana)+" kg";
+  const a = $("alerta");
+  a.className = acabando.length ? "" : "off";
+  a.textContent = !lista.length ? "Nenhuma leitura ainda. Envie uma leitura pelo simulador."
+    : acabando.length ? "Prato acabando: "+acabando.map(c=>c.prato).join(", ")+" — fazer reposição" : "Tudo abastecido.";
+  $("cubas").innerHTML = lista.map(c=>`
+    <article class="cuba ${CLS[c.st]}">
+      <div class="top"><strong>${esc(c.prato)}</strong><span class="st">${ROTULO[c.st]}</span></div>
+      <div class="bar" role="progressbar" aria-valuenow="${c.p}" aria-valuemin="0" aria-valuemax="100"><i style="width:${c.p}%"></i></div>
+      <span class="mut">Balança ${esc(c.balanca_id)} · ${c.peso_atual_g} g / ${c.cap} g · ${c.p}%</span>
+    </article>`).join("");
+}
+
+// ===== Relatório semanal =====
+let rel = {pratos:[]};
+function pintarRelatorio(raw){
+  const lista = Array.isArray(raw) ? raw : raw.pratos || [];
+  const pratos = lista.map(p=>({
+    prato:p.prato, consumo_g:p.consumo_g ?? Math.round((p.consumo_kg||0)*1000),
+    alertas:p.total_alertas ?? p.alertas_acabando ?? p.alertas ?? 0,
+    por_dia:p.consumo_diario ? p.consumo_diario.map(d=>({dia:d.data, consumo_g:d.consumo_g})) : p.por_dia||[]
+  })).sort((a,b)=>b.consumo_g-a.consumo_g);
+  rel = {pratos, texto: raw.resumo_texto || ""};
+  totalSemana = pratos.reduce((s,p)=>s+p.consumo_g,0);
+  $("k3").textContent = kg(totalSemana)+" kg";
+  const max = Math.max(1,...pratos.map(p=>p.consumo_g));
+  $("graf").innerHTML = pratos.length ? pratos.map(p=>`<div class="rb"><span>${esc(p.prato)}</span><div class="bar"><i style="width:${p.consumo_g/max*100}%"></i></div><b>${kg(p.consumo_g)} kg</b></div>`).join("")
+    : '<p class="mut">Sem leituras nos últimos 7 dias.</p>';
+  $("tab").tBodies[0].innerHTML = pratos.map(p=>`<tr><td>${esc(p.prato)}</td><td>${kg(p.consumo_g)} kg</td><td>${p.alertas}</td></tr>`).join("");
+  const dias = [...new Set(pratos.flatMap(p=>p.por_dia.map(x=>x.dia)))].sort();
+  rel.dias = dias;
+  $("dias").tHead.innerHTML = "<tr><th>Prato</th>"+dias.map(d=>`<th>${dm(d)}</th>`).join("")+"</tr>";
+  $("dias").tBodies[0].innerHTML = pratos.map(p=>`<tr><td>${esc(p.prato)}</td>`+dias.map(d=>`<td>${(p.por_dia.find(x=>x.dia===d)||{}).consumo_g ?? 0}</td>`).join("")+"</tr>").join("");
+}
+function resumoTexto(){
+  if(rel.texto) return rel.texto;
+  return ["Relatório semanal — Bovinos Grill", ...rel.pratos.map((p,i)=>`${i+1}. ${p.prato}: ${kg(p.consumo_g)} kg, ${p.alertas} vezes acabando`)].join("\n");
+}
+function baixarArquivo(blob, nome){
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = nome; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+$("csv").onclick = async ()=>{
+  if(!USAR_MOCK){
+    try{
+      const r = await fetch(API_URL+"/relatorio-semanal/csv", {signal: AbortSignal.timeout(10000)});
+      if(!r.ok) throw new Error("CSV HTTP "+r.status);
+      const nome = (r.headers.get("Content-Disposition")||"").match(/filename="([^"]+)"/);
+      baixarArquivo(await r.blob(), nome ? nome[1] : "relatorio-semanal.csv");
+      $("msg").textContent="CSV baixado.";
+    }catch(e){ $("msg").textContent="Falha ao baixar CSV: "+e.message; }
+    return;
+  }
+  const d = rel.dias||[];
+  const linhas = ["prato;consumo_kg;alertas_acabando;"+d.map(x=>dm(x)+" (g)").join(";"),
+    ...rel.pratos.map(p=>[p.prato,(p.consumo_g/1000).toFixed(1).replace(".",","),p.alertas,...d.map(x=>(p.por_dia.find(y=>y.dia===x)||{}).consumo_g ?? 0)].join(";"))];
+  baixarArquivo(new Blob(["\ufeff"+linhas.join("\n")],{type:"text/csv"}), "relatorio-semanal.csv");
+};
+$("copiar").onclick = async ()=>{
+  try{ await navigator.clipboard.writeText(resumoTexto()); $("msg").textContent="Resumo copiado."; }
+  catch(e){ $("msg").textContent="Não foi possível copiar. Use o CSV."; }
+  setTimeout(()=>$("msg").textContent="",3000);
+};
+
+// ===== Ciclos de atualização =====
+async function atualizarEstado(){
+  try{ pintarEstado(await get("/estado-atual")); mostrarErro("erro",null); $("atual").textContent="Atualizado às "+new Date().toLocaleTimeString("pt-BR"); }
+  catch(e){ mostrarErro("erro",e); }
+}
+async function atualizarRelatorio(){
+  try{ pintarRelatorio(await get("/relatorio-semanal")); mostrarErro("erro2",null); }
+  catch(e){ mostrarErro("erro2",e); }
+}
+$("modo").textContent = USAR_MOCK ? "Simulação" : "Ao vivo";
+atualizarRelatorio(); atualizarEstado();
+setInterval(atualizarEstado, INTERVALO_MS);
+setInterval(atualizarRelatorio, 30000);
+</script>
+</body>
+</html>
