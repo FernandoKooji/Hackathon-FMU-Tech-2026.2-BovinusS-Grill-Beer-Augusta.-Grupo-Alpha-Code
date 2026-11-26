@@ -272,7 +272,7 @@ Os testes que acessam o SQLite usam bancos em diretórios temporários. O README
 - Previsão de demanda.
 - Monitoramento de múltiplas unidades de restaurante.
 
-## Equipe
+## Equipe AlphaCode
 
 ### Vitória Peixoto
 
