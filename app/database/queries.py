@@ -44,3 +44,13 @@ FROM leituras_ordenadas
 WHERE posicao = 1
 ORDER BY balanca_id ASC
 """
+
+
+GET_LEITURAS_PERIODO = """
+SELECT prato, criado_em, consumo_g, COUNT(*) AS quantidade,
+       SUM(novo_alerta) AS total_alertas
+FROM leituras
+WHERE criado_em >= ? AND criado_em < ?
+GROUP BY prato, criado_em, consumo_g
+ORDER BY criado_em ASC, MIN(id) ASC
+"""

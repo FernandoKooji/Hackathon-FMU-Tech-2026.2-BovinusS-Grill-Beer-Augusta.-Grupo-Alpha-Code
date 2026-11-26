@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.database import init_db
 from app.routers.leitura_router import router as leitura_router
+from app.routers.relatorio_router import router as relatorio_router
 
 
 @asynccontextmanager
@@ -36,8 +37,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
     allow_credentials=False,
+    expose_headers=["Content-Disposition"],
 )
 app.include_router(leitura_router)
+app.include_router(relatorio_router)
 
 
 @app.get("/")
